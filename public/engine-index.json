@@ -1,0 +1,20 @@
+[
+  ".env.example",
+  "DEPLOYMENT.md",
+  "ENV.md",
+  "README.md",
+  "grok-auto-build-engine/INSTALL-NOTES.md",
+  "grok-auto-build-engine/POLICY-AUTONOMY.md",
+  "grok-auto-build-engine/config/autonomy.json",
+  "grok-auto-build-engine/docs/FORMAT-SOURCES.md",
+  "grok-auto-build-engine/manifest.json",
+  "grok-auto-build-engine/package.json",
+  "grok-auto-build-engine/plugin.json",
+  "grok-auto-build-engine/scripts/bootstrap.sh",
+  "grok-auto-build-engine/scripts/execute-pipeline.sh",
+  "grok-auto-build-engine/scripts/verify-environment.sh",
+  "grok-auto-build-engine/skills/build/SKILL.md",
+  "grok-auto-build-engine/src/core-engine.js",
+  "index.html",
+  "install.sh"
+]
