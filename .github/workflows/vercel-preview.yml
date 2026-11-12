@@ -24,19 +24,20 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - name: Check VERCEL_TOKEN
+      - name: Check Vercel token
         id: token
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           ADMIN_VERCEL_TOKEN: ${{ secrets.ADMIN_VERCEL_TOKEN }}
         run: |
-          if [ -z "$VERCEL_TOKEN" ]; then
+          TOKEN="${VERCEL_TOKEN:-${ADMIN_VERCEL_TOKEN:-}}"
+          if [ -z "$TOKEN" ]; then
             echo "missing=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::VERCEL_TOKEN secret not set — preview deploy skipped."
-            echo "Add repository secret VERCEL_TOKEN (and optionally VERCEL_ORG_ID, VERCEL_PROJECT_ID)."
-            echo "Token: https://vercel.com/account/settings/tokens"
+            echo "::warning::Set secret VERCEL_TOKEN or ADMIN_VERCEL_TOKEN — preview skipped."
+            echo "https://vercel.com/account/settings/tokens"
           else
             echo "missing=false" >> "$GITHUB_OUTPUT"
+            echo "VERCEL_TOKEN=$TOKEN" >> "$GITHUB_ENV"
           fi
 
       - name: Install
@@ -51,7 +52,6 @@ jobs:
         if: steps.token.outputs.missing == 'false'
         id: deploy
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
