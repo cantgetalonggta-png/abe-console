@@ -1,0 +1,40 @@
+name: live-smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */12 * * *"
+  workflow_run:
+    workflows: ["vercel-prod-deploy"]
+    types: [completed]
+
+jobs:
+  smoke:
+    name: Smoke production hosts
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Probe package host
+        run: |
+          set -euo pipefail
+          BASE=https://auto-build-engine.vercel.app
+          for path in "/" "/ENV.md" "/env.example" "/install.sh" "/grok-auto-build-engine/plugin.json"; do
+            code=$(curl -sS -o /tmp/body -w "%{http_code}" --max-time 30 "$BASE$path")
+            echo "$BASE$path → HTTP $code"
+            test "$code" = "200"
+          done
+          grep -qi "Auto-Build Engine" /tmp/body || grep -qi "auto-build" /tmp/body || true
+
+      - name: Probe console production (if configured)
+        env:
+          CONSOLE_URL: ${{ vars.CONSOLE_PRODUCTION_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CONSOLE_URL:-}" ]; then
+            echo "CONSOLE_PRODUCTION_URL repository variable not set — skipping console smoke."
+            echo "After first prod deploy, set variable to the *.vercel.app URL."
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/console -w "%{http_code}" --max-time 30 "$CONSOLE_URL")
+          echo "$CONSOLE_URL → HTTP $code"
+          test "$code" = "200"

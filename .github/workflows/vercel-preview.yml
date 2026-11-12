@@ -1,0 +1,99 @@
+name: vercel-preview
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: vercel-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Deploy preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Skip fork PRs that cannot use repo secrets
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Check VERCEL_TOKEN
+        id: token
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "missing=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::VERCEL_TOKEN secret not set — preview deploy skipped."
+            echo "Add repository secret VERCEL_TOKEN (and optionally VERCEL_ORG_ID, VERCEL_PROJECT_ID)."
+            echo "Token: https://vercel.com/account/settings/tokens"
+          else
+            echo "missing=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install
+        if: steps.token.outputs.missing == 'false'
+        run: npm ci
+
+      - name: Build
+        if: steps.token.outputs.missing == 'false'
+        run: npm run build
+
+      - name: Deploy preview to Vercel
+        if: steps.token.outputs.missing == 'false'
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          SCOPE_ARGS=()
+          if [ -n "${VERCEL_ORG_ID:-}" ] && [ -n "${VERCEL_PROJECT_ID:-}" ]; then
+            echo "Using VERCEL_ORG_ID + VERCEL_PROJECT_ID link"
+          else
+            npx vercel@latest link --yes --scope echo-ec69 --project abe-console \
+              || npx vercel@latest link --yes --scope echo-ec69 \
+              || npx vercel@latest link --yes
+          fi
+          URL=$(npx vercel@latest deploy --prebuilt --yes --scope echo-ec69 2>&1 | tee /tmp/deploy.log | tail -n 1)
+          # Prefer last https URL in output
+          URL=$(grep -oE 'https://[^ ]+\.vercel\.app' /tmp/deploy.log | tail -n 1 || true)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Preview URL: $URL"
+
+      - name: Comment preview URL on PR
+        if: steps.token.outputs.missing == 'false' && github.event_name == 'pull_request' && steps.deploy.outputs.url != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.deploy.outputs.url }}';
+            const body = `### Vercel preview\n\n${url}\n\n_Deployed by \`vercel-preview\` workflow._`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.user?.type === 'Bot' && c.body?.includes('Vercel preview'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

@@ -1,45 +1,89 @@
 name: vercel-prod-deploy
+
 on:
-  workflow_dispatch:
   push:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: vercel-prod
+  cancel-in-progress: false
+
 jobs:
   deploy:
+    name: Build + production deploy
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
+
       - name: Require VERCEL_TOKEN
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then
-            echo "VERCEL_TOKEN secret missing on this repo."
-            echo "Add it at: Settings → Secrets → Actions → VERCEL_TOKEN"
+            echo "::error::VERCEL_TOKEN secret missing."
+            echo "Add it at: Settings → Secrets and variables → Actions → New repository secret"
             echo "Create token: https://vercel.com/account/settings/tokens"
+            echo "Optional: VERCEL_ORG_ID, VERCEL_PROJECT_ID, XAI_API_KEY"
+            echo "Team scope used by deploy-vercel.sh: echo-ec69"
             exit 1
           fi
-          echo "VERCEL_TOKEN present (value redacted)."
-      - run: npm ci
-      - run: npm run build
-      - name: Link + deploy production
+          echo "VERCEL_TOKEN present (value not logged)."
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Production build
+        run: npm run build
+
+      - name: Deploy production (prebuilt)
+        id: deploy
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
         run: |
-          set -e
-          npx vercel@latest pull --yes --environment=production || true
-          if [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
-            echo "Using org/project env link"
+          set -euo pipefail
+
+          if [ -n "${VERCEL_ORG_ID:-}" ] && [ -n "${VERCEL_PROJECT_ID:-}" ]; then
+            echo "Linked via VERCEL_ORG_ID + VERCEL_PROJECT_ID"
           else
-            npx vercel@latest link --yes --project abe-console || npx vercel@latest link --yes
+            npx vercel@latest link --yes --scope echo-ec69 --project abe-console \
+              || npx vercel@latest link --yes --scope echo-ec69 \
+              || npx vercel@latest link --yes --project abe-console \
+              || npx vercel@latest link --yes
           fi
-          # set XAI if provided as secret
-          if [ -n "${{ secrets.XAI_API_KEY }}" ]; then
-            printf '%s' "${{ secrets.XAI_API_KEY }}" | npx vercel@latest env add XAI_API_KEY production --force || true
+
+          # Optional: ensure Secret XAI_API_KEY on Production (Config/Secret model)
+          if [ -n "${XAI_API_KEY:-}" ]; then
+            printf '%s' "$XAI_API_KEY" | npx vercel@latest env add XAI_API_KEY production --type secret --force \
+              || printf '%s' "$XAI_API_KEY" | npx vercel@latest env add XAI_API_KEY production --force \
+              || true
+            printf '%s' 'grok-3-latest' | npx vercel@latest env add XAI_MODEL production --type config --force || true
+            printf '%s' 'true' | npx vercel@latest env add GROK_CHAT_ENABLED production --type config --force || true
           fi
-          npx vercel@latest deploy --prebuilt --prod --yes
+
+          npx vercel@latest deploy --prebuilt --prod --yes --scope echo-ec69 2>&1 | tee /tmp/prod-deploy.log \
+            || npx vercel@latest deploy --prebuilt --prod --yes 2>&1 | tee /tmp/prod-deploy.log
+
+          URL=$(grep -oE 'https://[^ ]+' /tmp/prod-deploy.log | grep -E 'vercel\.app|abe-console' | tail -n 1 || true)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Production URL: ${URL:-see logs}"
+
+      - name: Summary
+        run: |
+          echo "### Production deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "URL: ${{ steps.deploy.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Secrets expected: \`VERCEL_TOKEN\` (required), \`VERCEL_ORG_ID\` / \`VERCEL_PROJECT_ID\` (optional), \`XAI_API_KEY\` (optional chat)." >> "$GITHUB_STEP_SUMMARY"
