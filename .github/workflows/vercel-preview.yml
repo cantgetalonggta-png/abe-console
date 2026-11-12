@@ -28,6 +28,7 @@ jobs:
         id: token
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          ADMIN_VERCEL_TOKEN: ${{ secrets.ADMIN_VERCEL_TOKEN }}
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then
             echo "missing=true" >> "$GITHUB_OUTPUT"

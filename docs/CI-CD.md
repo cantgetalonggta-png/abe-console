@@ -13,7 +13,8 @@
 
 | Secret | Required | Purpose |
 |--------|----------|--------|
-| `VERCEL_TOKEN` | **Yes** for deploy | [Create token](https://vercel.com/account/settings/tokens) |
+| `VERCEL_TOKEN` | **Yes** for deploy (or use alias) | [Create token](https://vercel.com/account/settings/tokens) |
+| `ADMIN_VERCEL_TOKEN` | Alias for `VERCEL_TOKEN` | Same token value; either name works |
 | `VERCEL_ORG_ID` | Optional | Skip interactive link |
 | `VERCEL_PROJECT_ID` | Optional | Skip interactive link |
 | `XAI_API_KEY` | Optional | Sets Production Secret for Grok chat RPC |

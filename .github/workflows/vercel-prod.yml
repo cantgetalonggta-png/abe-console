@@ -23,19 +23,26 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - name: Require VERCEL_TOKEN
+      - name: Resolve Vercel token
+        id: tok
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          ADMIN_VERCEL_TOKEN: ${{ secrets.ADMIN_VERCEL_TOKEN }}
         run: |
-          if [ -z "$VERCEL_TOKEN" ]; then
-            echo "::error::VERCEL_TOKEN secret missing."
-            echo "Add it at: Settings → Secrets and variables → Actions → New repository secret"
+          set -euo pipefail
+          TOKEN="${VERCEL_TOKEN:-}"
+          if [ -z "$TOKEN" ]; then TOKEN="${ADMIN_VERCEL_TOKEN:-}"; fi
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Missing secret. Set VERCEL_TOKEN or ADMIN_VERCEL_TOKEN on this repo."
+            echo "GitHub → Settings → Secrets and variables → Actions"
             echo "Create token: https://vercel.com/account/settings/tokens"
+            echo "Name on Vercel can be anything; the secret value is the token string (often starts with vca_)."
             echo "Optional: VERCEL_ORG_ID, VERCEL_PROJECT_ID, XAI_API_KEY"
-            echo "Team scope used by deploy-vercel.sh: echo-ec69"
             exit 1
           fi
-          echo "VERCEL_TOKEN present (value not logged)."
+          # Export for later steps via GITHUB_ENV (not printed)
+          echo "VERCEL_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+          echo "Token resolved (source secret name redacted; length ${#TOKEN})."
 
       - name: Install
         run: npm ci
